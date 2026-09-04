@@ -101,7 +101,26 @@ class Workspace:
         guarding against is the second message existing, so assert on the world, not the
         response. Write that test first.
         """
-        raise ToolError("send_message not implemented — see TASK 4b")
+        if not contact_id:
+            raise ToolError("contact_id is required")
+        if not idempotency_key:
+            raise ToolError("idempotency_key is required")
+        if contact_id not in self.contacts:
+            raise ToolError(f"contact {contact_id!r} not found")
+
+        # Deduplicate: if we've seen this key before, return the cached result
+        if idempotency_key in self._idem:
+            return {**self._idem[idempotency_key], "deduped": True}
+
+        # First time seeing this key: actually send
+        result = {
+            "message_id": f"m_{len(self.messages)}",
+            "contact_id": contact_id,
+            "deduped": False,
+        }
+        self.messages.append({"contact_id": contact_id, "body": body, "idempotency_key": idempotency_key})
+        self._idem[idempotency_key] = result
+        return result
 
 
 @dataclass(frozen=True)
