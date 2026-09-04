@@ -60,4 +60,46 @@ def verify(task: Task, run: Run) -> Verdict:
 
     Write at least the first three before you write the function.
     """
-    raise NotImplementedError("verify — see TASK 2")
+    matched = []
+    missing = []
+    
+    # Copy effects so we can "spend" them without mutating the original run object
+    available_effects = run.effects.copy()
+    
+    for expected in task.expected_effects:
+        found = False
+        for i, effect in enumerate(available_effects):
+            if effect.tool == expected.tool:
+                # Check subset match
+                matches_all = True
+                for k, v in expected.match.items():
+                    if effect.args.get(k) != v:
+                        matches_all = False
+                        break
+                
+                if matches_all:
+                    found = True
+                    matched.append(expected)
+                    available_effects.pop(i)  # Rule 2: spend the effect
+                    break
+        
+        if not found:
+            missing.append(expected)
+            
+    # Rule 3: Any leftover effects are unexpected
+    unexpected = available_effects
+    
+    # Rule 4: pass if no missing and no unexpected
+    passed = len(missing) == 0 and len(unexpected) == 0
+    
+    # Rule 5: detailed string
+    detail = f"{len(matched)} matched, {len(missing)} missing, {len(unexpected)} unexpected"
+    
+    return Verdict(
+        passed=passed,
+        matched=matched,
+        missing=missing,
+        unexpected=unexpected,
+        mode=run.autonomy,
+        detail=detail
+    )
