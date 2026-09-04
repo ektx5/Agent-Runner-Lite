@@ -148,7 +148,66 @@ def run_agent(run: Run, deps: AgentDeps) -> Run:
       - "never_finishes" ends with status "failed" and does not hang
       - "bad_credentials" ends with status "failed" and does not raise out of run_agent
     """
-    raise NotImplementedError("run_agent — see TASK 3")
+    task = deps.store.get_task(run.task_id)
+    messages = initial_messages(task.goal)
+    writes_done = 0
+    run.status = "running"
+    
+    try:
+        for _ in range(deps.settings.max_steps):
+            intent = _decide(deps, messages)
+            if intent is None:
+                _emit(run, "error", message="model produced invalid JSON")
+                run.status = "failed"
+                run.error = "model produced invalid JSON"
+                break
+                
+            if intent.intent == "final":
+                _emit(run, "final", message=intent.answer or "")
+                run.status = "completed"
+                break
+                
+            tool_name = intent.tool
+            tool = deps.registry.get(tool_name)
+            if tool is None:
+                _emit(run, "tool_result", tool=tool_name, result={"error": "unknown tool"}, ok=False)
+                messages.append({"role": "user", "content": _observation({"error": f"unknown tool: {tool_name}"})})
+                continue
+                
+            decision = evaluate_gate(run.autonomy, tool.kind, writes_done, deps.settings.max_auto_writes)
+            _emit(run, "gate", message=decision.reason)
+            
+            if decision.requires_approval:
+                approved = _ask_reviewer(task, run, deps)
+                if not approved:
+                    _emit(run, "tool_result", tool=tool_name, result={"error": "reviewer declined"}, ok=False)
+                    messages.append({"role": "user", "content": _observation({"error": "reviewer declined"})})
+                    continue
+            
+            result, ok = _execute(tool, intent.args, run, decision.simulate)
+            _emit(run, "tool_call", tool=tool_name, args=intent.args)
+            _emit(run, "tool_result", tool=tool_name, result=result, ok=ok)
+            
+            if ok and tool.kind == "write":
+                run.effects.append(Effect(tool=tool_name, args=intent.args, simulated=decision.simulate))
+                writes_done += 1
+                
+            messages.append({"role": "user", "content": _observation(result)})
+            
+        else:
+            _emit(run, "error", message="max steps reached without final intent")
+            run.status = "failed"
+            run.error = "max steps reached without final intent"
+            
+    except Exception as e:
+        _emit(run, "error", message=str(e))
+        run.status = "failed"
+        run.error = str(e)
+        
+    if run.status == "completed":
+        run.verdict = verify(task, run)
+        
+    return run
 
 
 # ─── Provided helpers ─────────────────────────────────────────────────────────────────────────
