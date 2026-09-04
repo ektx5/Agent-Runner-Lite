@@ -13,11 +13,11 @@ def test_loop_completes_with_no_tools():
     assert result.verdict.passed is True
 
 def test_loop_send_followup_autonomous():
-    # "send_followup" uses send_message
+    # "send_followup" uses send_message to c_1 (Acme)
     from app.models import ExpectedEffect
     run, deps = make_run(
         script=SCENARIOS["send_followup"],
-        expected=[ExpectedEffect(tool="send_message", match={"contact_id": "c_2"})],
+        expected=[ExpectedEffect(tool="send_message", match={"contact_id": "c_1"})],
         autonomy="autonomous"
     )
     result = run_agent(run, deps)
@@ -30,7 +30,7 @@ def test_loop_send_followup_shadow():
     from app.models import ExpectedEffect
     run, deps = make_run(
         script=SCENARIOS["send_followup"],
-        expected=[ExpectedEffect(tool="send_message", match={"contact_id": "c_2"})],
+        expected=[ExpectedEffect(tool="send_message", match={"contact_id": "c_1"})],
         autonomy="shadow"
     )
     result = run_agent(run, deps)
